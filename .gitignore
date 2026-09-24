@@ -1,0 +1,60 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv_new/
+csv/
+env/
+ENV/
+.venv/
+.csv/
+.env
+# Django stuff
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/
+
+# Static files (optional if auto-generated)
+staticfiles/
+
+# Environment variables
+.env
+.env.*
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node modules (if using frontend tools)
+node_modules/
+
+# Build files
+dist/
+build/
+
+# Coverage / testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Logs
+logs/
+*.log
+
+# Secret keys / config
+secret_key.txt
+config.json
+
+# migrations (optional, only if you want clean repo)
+**/migrations/*
+!**/migrations/__init__.py
