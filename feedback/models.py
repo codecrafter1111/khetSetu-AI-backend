@@ -3,7 +3,7 @@ from django.conf import settings
 from Oders.models import Orders
 from delivery.models import DeliveryPartner
 from django.core.validators import MinValueValidator, MaxValueValidator
-from Products.models import Product
+from Products.models import Products
 
 class RiderFeedback(models.Model):
 
@@ -42,7 +42,7 @@ class ProductRating(models.Model):
         related_name="product_ratings"
     )
     product = models.ForeignKey(
-        Product,
+        Products,
         on_delete=models.CASCADE,
         related_name="ratings"
     )

@@ -9,9 +9,6 @@ from cloudinary.models import CloudinaryField
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 
-User = get_user_model()
-
-
 class CustomUser(AbstractUser):
     mobile_number = models.CharField(max_length=15, unique=True, null=True, blank=True)
     is_verified = models.BooleanField(default=False)
@@ -104,7 +101,7 @@ class FarmerProfile(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.OneToOneField(
-        User, on_delete=models.CASCADE, related_name="farmer_profile"
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="farmer_profile"
     )
     
     # Personal Info
@@ -144,7 +141,7 @@ class FarmerProfile(models.Model):
     )
     verified_at = models.DateTimeField(blank=True, null=True)
     verified_by = models.ForeignKey(
-        User,
+    settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

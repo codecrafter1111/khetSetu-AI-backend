@@ -57,9 +57,7 @@ class Products(models.Model):
     offer = models.DecimalField(max_digits=5, decimal_places=2, default=17)
 
     # ── MANDATORY EXPIRY FIELD FOR FARMING PRODUCE ──────────────────────
-    expiry_date = models.DateTimeField(
-        help_text="Mandatory expiry date for fresh farm produce"
-    )
+    expiry_date = models.DateField(null=True, blank=True)
 
     is_available = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -11,12 +11,13 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Categorys, Products, BulkImport, ShopLocation, ProductRating
+from .models import Categorys, Products, BulkImport, ShopLocation
+from feedback.models import ProductRating
 from .productserializer import (
     ProductSerializer,
     CategorySerializer,
-    ProductRatingSerializer,
 )
+from feedback.serializers import ProductRatingSerializer
 from .FramerLocationserial import ShopLocationSerializer
 from .services.Productfilters import ProductFilter
 from .services.Pagination import ProductPagination
