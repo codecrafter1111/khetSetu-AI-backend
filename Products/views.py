@@ -1,5 +1,6 @@
 import logging
 import cloudinary.uploader
+from django.db.migrations import serializer
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
@@ -171,14 +172,13 @@ class ProductDetailBySlugView(generics.RetrieveAPIView):
 # 4. ADMIN / MERCHANT PRODUCT MANAGEMENT VIEWS
 # ----------------------------------------------------------------------
 class ProductListCreateAdminView(generics.ListCreateAPIView):
-    """
-    Management endpoint to list or create products for back-office.
-    `expiry_date` is validated via ProductSerializer on POST.
-    """
-    queryset = Products.objects.select_related("category").all()
-    serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticated]
-
+     """ Management endpoint to list or create products for back-office. `expiry_date` is validated via ProductSerializer on POST. """
+     queryset = Products.objects.select_related("category").all() 
+     serializer_class = ProductSerializer
+     permission_classes = [IsAuthenticated] 
+     def perform_create(self, serializer): 
+        """ Automatically assign the currently logged-in user as the owner/creator of the product. """ 
+        serializer.save( user=self.request.user )
 
 class ProductDetailAdminView(generics.RetrieveUpdateDestroyAPIView):
     """
