@@ -1,5 +1,6 @@
+from django import views
 from django.urls import path,include
-from Account.views import RegisterView,LoginView,OtpView,ResendView,Logout,Profile
+from Account.views import RegisterView,LoginView,OtpView,ResendView,Logout,Profile,FarmerProfileView,FarmDetailView
 from .views import  *
 
 from django.http import JsonResponse
@@ -14,6 +15,7 @@ def test_api(request):
 
 urlpatterns = [
     path('Account/Registration/',RegisterView.as_view(),name='register'),
+    path("profile/update/", UserProfileUpdateView.as_view(), name="profile-update"),
     path('login/',LoginView.as_view(),name='login'),
     path('resend-otp/',ResendView.as_view(),name='resend_otp'),
     path('verify-otp/',OtpView.as_view(),name='verify-otp'),
@@ -39,5 +41,12 @@ urlpatterns = [
     path('shipping/default/<int:id>/',SetDefaultAddress.as_view()),
 
     path('shipping/current-default/',DefaultAddress.as_view()),
+
+  
+    path("farmer/profile/", FarmerProfileView.as_view(), name="farmer-profile"),
+    path("farmer/farm-details/", FarmDetailView.as_view(), name="farm-details"),
+    
+    # Admin verification endpoint
+    path("admin/farmer/<uuid:profile_id>/verify/", AdminVerifyFarmerView.as_view(), name="admin-farmer-verify"),
    
 ]

@@ -1,11 +1,12 @@
+from django.http.multipartparser import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .Accountserializer import CustomUserSerializer,Loginserializer
 
 from rest_framework.generics import ListCreateAPIView
-from rest_framework import status
-from .models import BuyerShipping
-
+from rest_framework import status,permissions
+from .models import BuyerShipping,FarmerProfile, FarmDetail, FarmPhoto
+from .serializer import FarmerProfileSerializer, FarmDetailSerializer
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -17,51 +18,96 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from .shippingserializer import BuyerShippingSerializer
 from .utils import save_otp
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 """
  Account Registration Login Logout and password reset, Otp verification and resend otp 
 """
 class RegisterView(APIView):
-
     permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @transaction.atomic
     def post(self, request):
-      
+        serializer = CustomUserSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(
+                {
+                    "success": False,
+                    "errors": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Save User & Image
+        user = serializer.save()
+
+        # Set Unverified State
+        user.is_verified = False
+        user.save(update_fields=["is_verified"])
+
+        # Redis OTP Storage
+        otp = random_otp()
+        save_otp(user.email, otp)
+
+        # Celery Background Email Triggers
+        send_otp_email.delay(user.email, str(otp))
+        send_wellcome_email.delay(user.email)
+
+        return Response(
+            {
+                "success": True,
+                "message": "User created successfully. OTP sent to email.",
+                "data": serializer.data
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+
+# ---------------------------------------------------------------------
+# 2. PROFILE UPDATE VIEW (Existing User Details & Image Update - No OTP)
+# ---------------------------------------------------------------------
+class UserProfileUpdateView(APIView):
+    permission_classes = [IsAuthenticated]  # Login required
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # Form Data & File parser
+
+    def patch(self, request):
+        user = request.user  # Logged-in user automatically fetched
+        
         serializer = CustomUserSerializer(
-            data=request.data
+            instance=user,
+            data=request.data,
+            partial=True  # Allows updating selected fields only
         )
 
         if not serializer.is_valid():
             return Response(
-                serializer.errors,
+                {
+                    "success": False,
+                    "errors": serializer.errors
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        user = serializer.save()
-        otp = random_otp()
-        # Redis
-        save_otp(
-            user.email,
-            otp
-        )
-        # Celery
-        send_otp_email.delay(
-            user.email,
-            str(otp)
-        )
-        send_wellcome_email.delay(
-            user.email
-        )
-
-        user.is_verified = False
-        user.save(update_fields=["is_verified"])
+        # Update profile (Calls serializer update method without sending OTP)
+        serializer.save()
 
         return Response(
             {
-                "message": "User created successfully"
+                "success": True,
+                "message": "Profile updated successfully.",
+                "data": serializer.data
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_200_OK
         )
+
+    def put(self, request):
+        return self.patch(request)
+
+    
 class Profile(APIView):
 
     permission_classes = [IsAuthenticated]
@@ -358,3 +404,106 @@ class DefaultAddress(APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+
+
+
+
+
+
+# farmer functionality  
+# 
+
+
+class FarmerProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile, _ = FarmerProfile.objects.get_or_create(user=request.user)
+        serializer = FarmerProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        profile, _ = FarmerProfile.objects.get_or_create(user=request.user)
+        is_draft = request.data.get("is_draft", True)
+
+        serializer = FarmerProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            # Edit karne par agar profile pehle se unverified ho toh re-validation triggers
+            serializer.save(is_draft=is_draft)
+            return Response(
+                {"message": "Farmer profile saved successfully.", "data": serializer.data},
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FarmDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        farmer_profile = get_object_or_404(FarmerProfile, user=request.user)
+        farm_detail = getattr(farmer_profile, "farm_detail", None)
+        if not farm_detail:
+            return Response({"detail": "Farm details not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = FarmDetailSerializer(farm_detail)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @transaction.atomic
+    def post(self, request):
+        farmer_profile, _ = FarmerProfile.objects.get_or_create(user=request.user)
+        farm_detail, _ = FarmDetail.objects.get_or_create(farmer_profile=farmer_profile)
+
+        is_draft = request.data.get("is_draft", True)
+        uploaded_photos = request.FILES.getlist("uploaded_photos")
+
+        data = request.data.dict() if hasattr(request.data, "dict") else request.data.copy()
+
+        serializer = FarmDetailSerializer(farm_detail, data=data, partial=True)
+        if serializer.is_valid():
+            saved_farm = serializer.save(is_draft=is_draft)
+
+            if uploaded_photos:
+                for photo_file in uploaded_photos[:5]:
+                    FarmPhoto.objects.create(farm=saved_farm, image=photo_file)
+
+            return Response(
+                {"message": "Farm details saved successfully.", "data": FarmDetailSerializer(saved_farm).data},
+                status=status.HTTP_200_OK,
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ------------------ ADMIN ONLY VERIFICATION VIEW ------------------
+class AdminVerifyFarmerView(APIView):
+    """
+    Endpoint for Admin / Staff to approve or reject farmer profiles.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    def patch(self, request, profile_id):
+        profile = get_object_or_404(FarmerProfile, id=profile_id)
+        serializer = AdminVerifyFarmerSerializer(profile, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            is_verified = serializer.validated_data.get("is_verified", profile.is_verified)
+            
+            profile.is_verified = is_verified
+            profile.verified_by = request.user
+            profile.verified_at = timezone.now() if is_verified else None
+            profile.rejection_reason = serializer.validated_data.get(
+                "rejection_reason", "" if is_verified else profile.rejection_reason
+            )
+            profile.save()
+
+            status_msg = "approved & verified" if is_verified else "rejected"
+            return Response(
+                {
+                    "message": f"Farmer profile {status_msg} successfully.",
+                    "data": FarmerProfileSerializer(profile).data
+                },
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
