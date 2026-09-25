@@ -159,6 +159,7 @@ class FarmerProfile(models.Model):
 
 
 class FarmDetail(models.Model):
+
     class AreaUnit(models.TextChoices):
         ACRES = "Acres", "Acres"
         HECTARES = "Hectares", "Hectares"
@@ -192,41 +193,149 @@ class FarmDetail(models.Model):
         RIVER = "River", "River"
         POND = "Pond", "Pond"
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    farmer_profile = models.OneToOneField(
-        FarmerProfile, on_delete=models.CASCADE, related_name="farm_detail"
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
     )
 
+    farmer_profile = models.OneToOneField(
+        FarmerProfile,
+        on_delete=models.CASCADE,
+        related_name="farm_detail"
+    )
+
+    # =========================
     # Basic Info
-    farm_name = models.CharField(max_length=150)
-    farm_owner = models.CharField(max_length=150)
-    village = models.CharField(max_length=100)
-    district = models.CharField(max_length=100)
-    state = models.CharField(max_length=100)
+    # =========================
+
+    farm_name = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True
+    )
+
+    farm_owner = models.CharField(
+        max_length=150,
+        blank=True,
+        null=True
+    )
+
+    village = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True
+    )
+
+    district = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True
+    )
+
+    state = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True
+    )
+
     pin_code = models.CharField(
         max_length=10,
-        validators=[RegexValidator(regex=r"^\d{6}$", message="Enter a valid 6-digit PIN code.")],
+        validators=[
+            RegexValidator(
+                regex=r"^\d{6}$",
+                message="Enter a valid 6-digit PIN code."
+            )
+        ],
+        blank=True,
+        null=True
     )
 
+    # =========================
     # Geolocation
-    farm_location_address = models.CharField(max_length=255, blank=True, null=True)
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, blank=True, null=True)
+    # =========================
 
-    # Land Details
-    total_farm_area = models.DecimalField(
-        max_digits=8, decimal_places=2, validators=[MinValueValidator(0.01)]
+    farm_location_address = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
     )
-    area_unit = models.CharField(max_length=20, choices=AreaUnit.choices, default=AreaUnit.ACRES)
-    soil_type = models.CharField(max_length=30, choices=SoilType.choices)
-    farming_method = models.CharField(max_length=30, choices=FarmingMethod.choices)
-    irrigation_type = models.CharField(max_length=30, choices=IrrigationType.choices)
-    water_source = models.CharField(max_length=30, choices=WaterSource.choices)
 
-    # Main Crops Grown
-    main_crops_grown = models.JSONField(default=list)
+    latitude = models.DecimalField(
+        max_digits=16,
+        decimal_places=6,
+        blank=True,
+        null=True
+    )
 
-    # Sustainability Practices
+    longitude = models.DecimalField(
+        max_digits=16,
+        decimal_places=6,
+        blank=True,
+        null=True
+    )
+
+    # =========================
+    # Land Details
+    # =========================
+
+    total_farm_area = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        validators=[MinValueValidator(0.01)],
+        blank=True,
+        null=True
+    )
+
+    area_unit = models.CharField(
+        max_length=20,
+        choices=AreaUnit.choices,
+        default=AreaUnit.ACRES,
+        blank=True,
+        null=True
+    )
+
+    soil_type = models.CharField(
+        max_length=30,
+        choices=SoilType.choices,
+        blank=True,
+        null=True
+    )
+
+    farming_method = models.CharField(
+        max_length=30,
+        choices=FarmingMethod.choices,
+        blank=True,
+        null=True
+    )
+
+    irrigation_type = models.CharField(
+        max_length=30,
+        choices=IrrigationType.choices,
+        blank=True,
+        null=True
+    )
+
+    water_source = models.CharField(
+        max_length=30,
+        choices=WaterSource.choices,
+        blank=True,
+        null=True
+    )
+
+    # =========================
+    # Main Crops
+    # =========================
+
+    main_crops_grown = models.JSONField(
+        default=list,
+        blank=True
+    )
+
+    # =========================
+    # Sustainability
+    # =========================
+
     has_organic_farming = models.BooleanField(default=False)
     has_crop_rotation = models.BooleanField(default=False)
     has_natural_fertilizers = models.BooleanField(default=False)
@@ -234,18 +343,46 @@ class FarmDetail(models.Model):
     has_soil_health_management = models.BooleanField(default=False)
     has_integrated_pest_management = models.BooleanField(default=False)
     has_agroforestry = models.BooleanField(default=False)
-    other_sustainability_practice = models.CharField(max_length=255, blank=True, null=True)
+
+    other_sustainability_practice = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+
+    # =========================
+    # Status
+    # =========================
 
     is_draft = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.farm_name} - {self.farm_owner}"
+        return f"{self.farm_name or 'Farm'} - {self.farm_owner or 'Owner'}"
 
 
 class FarmPhoto(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    farm = models.ForeignKey(FarmDetail, on_delete=models.CASCADE, related_name="photos")
-    image = models.ImageField(upload_to="farm_photos/%Y/%m/")
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+
+    farm = models.ForeignKey(
+        FarmDetail,
+        on_delete=models.CASCADE,
+        related_name="photos"
+    )
+
+    image = models.ImageField(
+        upload_to="farm_photos/%Y/%m/",
+        null=True,
+        blank=True
+    )
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True
+    )

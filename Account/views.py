@@ -415,7 +415,8 @@ class DefaultAddress(APIView):
 
 
 class FarmerProfileView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def get(self, request):
         profile, _ = FarmerProfile.objects.get_or_create(user=request.user)
@@ -438,7 +439,8 @@ class FarmerProfileView(APIView):
 
 
 class FarmDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def get(self, request):
         farmer_profile = get_object_or_404(FarmerProfile, user=request.user)
@@ -479,7 +481,8 @@ class AdminVerifyFarmerView(APIView):
     """
     Endpoint for Admin / Staff to approve or reject farmer profiles.
     """
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def patch(self, request, profile_id):
         profile = get_object_or_404(FarmerProfile, id=profile_id)
