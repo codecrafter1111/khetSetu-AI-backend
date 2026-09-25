@@ -1,17 +1,15 @@
 from django.contrib import admin
-from .models import Categorys,Products
+from .models import Categorys, Products, ShopLocation
+
 
 @admin.register(Categorys)
 class CategorysAdmin(admin.ModelAdmin):
-  list_display =['name']
-# Register your models here.
+    list_display = ("name",)
+    search_fields = ("name",)
 
-from django.contrib import admin
-from .models import Products
 
 @admin.register(Products)
 class ProductsAdmin(admin.ModelAdmin):
-
     list_display = (
         "name",
         "brand",
@@ -32,3 +30,20 @@ class ProductsAdmin(admin.ModelAdmin):
         "brand",
         "is_available",
     )
+
+
+@admin.register(ShopLocation)
+class ShopLocationAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "address",
+        "latitude",
+        "longitude",
+    )
+
+    search_fields = (
+        "name",
+        "address",
+    )
+
+    list_filter = ()

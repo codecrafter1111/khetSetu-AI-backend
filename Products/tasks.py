@@ -7,6 +7,7 @@ from celery import shared_task
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 import cloudinary.uploader
 
@@ -26,7 +27,6 @@ def send_import_progress(
     skipped,
     failed
 ):
-
     from channels.layers import get_channel_layer
     from asgiref.sync import async_to_sync
 
@@ -36,24 +36,15 @@ def send_import_progress(
         channel_layer.group_send
     )(
         f"bulk_import_{import_id}",
-
         {
             "type": "bulk_import_progress",
-
             "import_id": str(import_id),
-
             "status": status,
-
             "processed": processed,
-
             "total": total,
-
             "created": created,
-
             "skipped": skipped,
-
             "failed": failed,
-
             "percentage": (
                 round(
                     processed / total * 100,
@@ -78,7 +69,6 @@ def bulk_create_products(
     self,
     import_id
 ):
-
     bulk_import = BulkImport.objects.select_related(
         "uploaded_by",
         "category"
@@ -86,12 +76,8 @@ def bulk_create_products(
         id=import_id
     )
 
-    bulk_import.status = (
-        BulkImport.Status.PROCESSING
-    )
-
+    bulk_import.status = BulkImport.Status.PROCESSING
     bulk_import.started_at = timezone.now()
-
     bulk_import.save(
         update_fields=[
             "status",
@@ -105,21 +91,16 @@ def bulk_create_products(
     processed = 0
 
     try:
-
         # --------------------------------
         # Download CSV from Cloudinary
         # --------------------------------
-
         response = requests.get(
             bulk_import.csv_url,
             timeout=60
         )
-
         response.raise_for_status()
 
-        csv_content = response.content.decode(
-            "utf-8-sig"
-        )
+        csv_content = response.content.decode("utf-8-sig")
 
         rows = list(
             csv.DictReader(
@@ -128,19 +109,14 @@ def bulk_create_products(
         )
 
         total = len(rows)
-
         bulk_import.total_rows = total
-
         bulk_import.save(
-            update_fields=[
-                "total_rows"
-            ]
+            update_fields=["total_rows"]
         )
 
         # --------------------------------
         # Send initial progress
         # --------------------------------
-
         send_import_progress(
             import_id=bulk_import.id,
             status="processing",
@@ -154,189 +130,127 @@ def bulk_create_products(
         # --------------------------------
         # Process rows
         # --------------------------------
-
         for row_number, row in enumerate(
             rows,
             start=2
         ):
-
             processed += 1
 
             try:
-
                 # -------------------------
                 # Read CSV data
                 # -------------------------
-
-                brand = row.get(
-                    "brand",
-                    ""
-                ).strip()
-
-                name = row.get(
-                    "title",
-                    ""
-                ).strip()
-
-                image_url = row.get(
-                    "extraLargeUrl",
-                    ""
-                ).strip()
+                brand = row.get("brand", "").strip()
+                name = row.get("title", "").strip()
+                image_url = row.get("extraLargeUrl", "").strip()
 
                 package_quantity = Decimal(
-                    row.get(
-                        "package_quantity",
-                        "0"
-                    ).strip()
+                    row.get("package_quantity", "0").strip()
                 )
 
-                package_unit = row.get(
-                    "package_unit",
-                    ""
-                ).strip()
+                package_unit = row.get("package_unit", "").strip()
 
                 price_inr = Decimal(
-                    row.get(
-                        "price_inr",
-                        "0"
-                    ).strip()
+                    row.get("price_inr", "0").strip()
                 )
+
+                # Reading mandatory expiry_date field (ISO format preferred: YYYY-MM-DD HH:MM:SS)
+                expiry_date_str = row.get("expiry_date", "").strip()
 
                 # -------------------------
                 # Basic validation
                 # -------------------------
-
                 if not name:
-
-                    raise ValueError(
-                        "Product title is empty"
-                    )
+                    raise ValueError("Product title is empty")
 
                 if not brand:
-
-                    raise ValueError(
-                        "Brand is empty"
-                    )
+                    raise ValueError("Brand is empty")
 
                 if not image_url:
-
-                    raise ValueError(
-                        "Image URL is empty"
-                    )
+                    raise ValueError("Image URL is empty")
 
                 if package_quantity <= 0:
-
-                    raise ValueError(
-                        "Package quantity must be > 0"
-                    )
+                    raise ValueError("Package quantity must be > 0")
 
                 if price_inr < 0:
+                    raise ValueError("Price cannot be negative")
 
-                    raise ValueError(
-                        "Price cannot be negative"
-                    )
+                # Expiry date validation
+                if not expiry_date_str:
+                    raise ValueError("Expiry date is required for bulk creation")
+
+                expiry_date = parse_datetime(expiry_date_str)
+                if expiry_date is None:
+                    raise ValueError("Invalid expiry date format. Use ISO format (e.g. YYYY-MM-DD HH:MM:SS)")
+
+                if timezone.is_naive(expiry_date):
+                    expiry_date = timezone.make_aware(expiry_date)
+
+                if expiry_date <= timezone.now():
+                    raise ValueError("Expiry date must be in the future")
 
                 # -------------------------
                 # Product key
                 # -------------------------
-
-                product_key = (
-                    create_product_key(
-                        brand=brand,
-                        name=name,
-                        package_quantity=package_quantity,
-                        package_unit=package_unit
-                    )
+                product_key = create_product_key(
+                    brand=brand,
+                    name=name,
+                    package_quantity=package_quantity,
+                    package_unit=package_unit
                 )
 
                 # -------------------------
                 # Duplicate check
                 # -------------------------
-
-                if Products.objects.filter(
-                    product_key=product_key
-                ).exists():
-
+                if Products.objects.filter(product_key=product_key).exists():
                     skipped_count += 1
-
                     continue
 
-                # Source URL duplicate
-                if Products.objects.filter(
-                    source_url=image_url
-                ).exists():
-
+                if Products.objects.filter(source_url=image_url).exists():
                     skipped_count += 1
-
                     continue
 
                 # -------------------------
                 # Download image
                 # -------------------------
-
                 image_response = requests.get(
                     image_url,
                     timeout=30
                 )
-
                 image_response.raise_for_status()
 
                 # -------------------------
                 # Cloudinary upload
                 # -------------------------
-
-                cloudinary_result = (
-                    cloudinary.uploader.upload(
-                        image_response.content,
-                        folder="swiftcart/products"
-                    )
+                cloudinary_result = cloudinary.uploader.upload(
+                    image_response.content,
+                    folder="swiftcart/products"
                 )
 
-                public_id = (
-                    cloudinary_result[
-                        "public_id"
-                    ]
-                )
+                public_id = cloudinary_result["public_id"]
 
                 # -------------------------
                 # Create product
                 # -------------------------
-
                 try:
-
                     with transaction.atomic():
-
                         Products.objects.create(
-
                             user=bulk_import.uploaded_by,
-
                             category=bulk_import.category,
-
                             name=name,
-
                             brand=brand,
-
                             source_url=image_url,
-
                             product_key=product_key,
-
                             image=public_id,
-
-                            package_quantity=
-                                package_quantity,
-
-                            package_unit=
-                                package_unit,
-
-                            price_inr=
-                                price_inr
+                            package_quantity=package_quantity,
+                            package_unit=package_unit,
+                            price_inr=price_inr,
+                            expiry_date=expiry_date  # Mandatory expiry date pass ho gayi
                         )
 
                 except IntegrityError:
-
                     # Race condition protection
                     skipped_count += 1
-
                     continue
 
                 created_count += 1
@@ -346,44 +260,23 @@ def bulk_create_products(
                 ValueError,
                 requests.RequestException
             ) as error:
-
                 failed_count += 1
-
-                print(
-                    f"Row {row_number} failed: "
-                    f"{error}"
-                )
+                print(f"Row {row_number} failed: {error}")
 
             except Exception as error:
-
                 failed_count += 1
-
-                print(
-                    f"Unexpected error "
-                    f"row {row_number}: "
-                    f"{error}"
-                )
+                print(f"Unexpected error row {row_number}: {error}")
 
             # -------------------------
             # Update DB progress
             # -------------------------
-
             if (
                 processed % 10 == 0
                 or processed == total
             ):
-
-                bulk_import.created_count = (
-                    created_count
-                )
-
-                bulk_import.skipped_count = (
-                    skipped_count
-                )
-
-                bulk_import.failed_count = (
-                    failed_count
-                )
+                bulk_import.created_count = created_count
+                bulk_import.skipped_count = skipped_count
+                bulk_import.failed_count = failed_count
 
                 bulk_import.save(
                     update_fields=[
@@ -406,27 +299,11 @@ def bulk_create_products(
         # --------------------------------
         # Completed
         # --------------------------------
-
-        bulk_import.status = (
-            BulkImport.Status.COMPLETED
-        )
-
-        bulk_import.created_count = (
-            created_count
-        )
-
-        bulk_import.skipped_count = (
-            skipped_count
-        )
-
-        bulk_import.failed_count = (
-            failed_count
-        )
-
-        bulk_import.completed_at = (
-            timezone.now()
-        )
-
+        bulk_import.status = BulkImport.Status.COMPLETED
+        bulk_import.created_count = created_count
+        bulk_import.skipped_count = skipped_count
+        bulk_import.failed_count = failed_count
+        bulk_import.completed_at = timezone.now()
         bulk_import.save()
 
         send_import_progress(
@@ -448,19 +325,9 @@ def bulk_create_products(
         }
 
     except Exception as error:
-
-        bulk_import.status = (
-            BulkImport.Status.FAILED
-        )
-
-        bulk_import.error_message = str(
-            error
-        )
-
-        bulk_import.completed_at = (
-            timezone.now()
-        )
-
+        bulk_import.status = BulkImport.Status.FAILED
+        bulk_import.error_message = str(error)
+        bulk_import.completed_at = timezone.now()
         bulk_import.save()
 
         send_import_progress(
@@ -473,4 +340,4 @@ def bulk_create_products(
             failed=failed_count
         )
 
-        raise
+        raise error

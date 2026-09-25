@@ -8,10 +8,12 @@ from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError
 
 from Oders.models import Orders
-from .models import RiderFeedback
-from .serializers import RiderFeedbackSerializer, RiderReviewSerializer
+from .models import ProductRating, RiderFeedback
+from .serializers import ProductRatingSerializer, RiderFeedbackSerializer, RiderReviewSerializer
 from django.db.models import Avg
 from rest_framework.views import APIView
+from rest_framework import viewsets, permissions
+from rest_framework.decorators import action
 
 
 class RiderFeedbackCreateView(CreateAPIView):
@@ -95,3 +97,34 @@ class RiderDashboardView(APIView):
                 many=True
             ).data
         })    
+
+
+
+class ProductRatingViewSet(viewsets.ModelViewSet):
+    queryset = ProductRating.objects.all()
+    serializer_class = ProductRatingSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        product_id = self.request.query_params.get("product_id")
+        
+        # Public product reviews filter by product ID
+        if product_id:
+            return queryset.filter(product_id=product_id)
+            
+        # Authenticated customer view own ratings
+        if self.action in ["list", "my_ratings"] and self.request.user.is_authenticated:
+            return queryset.filter(user=self.request.user)
+            
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=["get"], permission_classes=[permissions.IsAuthenticated])
+    def my_ratings(self, request):
+        """ Get all product ratings submitted by current logged-in customer """
+        ratings = ProductRating.objects.filter(user=request.user)
+        serializer = self.get_serializer(ratings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)    
