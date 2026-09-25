@@ -13,6 +13,7 @@ class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Categorys
         fields = ["id", "name"]
+        read_only_fields = ['user']
 
 
 class ProductSerializer(serializers.ModelSerializer):
